@@ -5,3 +5,6 @@ edition = "2024"
 authors = ["https://github.com/nxm777"]
 
 [dependencies]
+axum = "0.8.9"
+dotenvy = "0.15.7"
+tokio = { version = "1.52.1", features = ["full"] }
