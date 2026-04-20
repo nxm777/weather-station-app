@@ -15,3 +15,8 @@ target
 Thumbs.db
 
 .env
+
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
