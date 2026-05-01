@@ -1,11 +1,9 @@
 use axum::{
-    extract::State,
-    routing::get,
-    http::{header, HeaderMap, HeaderValue},
-    response::IntoResponse,
-    Json, Router,
+    Json, Router, extract::{Query, State}, http::{HeaderMap, HeaderValue, header}, response::IntoResponse, routing::get
 };
 
+use chrono::{DateTime, Utc};
+use serde::Deserialize;
 use sqlx::SqlitePool;
 use crate::models::{WeatherPayload, WeatherReading};
 use crate::state::AppState;
@@ -19,18 +17,45 @@ pub fn routes() -> Router<AppState> {
 
 }
 
-async fn fetch_all_readings(db: &SqlitePool) -> Result<Vec<WeatherReading>, sqlx::Error> {
-    sqlx::query_as::<_, WeatherReading>(
-        "SELECT id, temperature, humidity, recorded_at FROM weather_readings ORDER BY id"
-    )
-    .fetch_all(db)
-    .await
+#[derive(Debug, Deserialize, Default)]
+struct ReadingFilters {
+    from: Option<DateTime<Utc>>,
+    to: Option<DateTime<Utc>>,
+    limit: Option<i64>,
+    after_id: Option<i64>
+}
+
+async fn fetch_readings(
+    db: &SqlitePool, 
+    filters: &ReadingFilters
+) -> Result<Vec<WeatherReading>, sqlx::Error> {
+    let mut qb = sqlx::QueryBuilder::new(
+        "SELECT id, temperature, humidity, recorded_at FROM weather_readings WHERE 1=1",
+    );
+
+    if let Some(from) = filters.from {
+        qb.push(" AND recorded_at >= ").push_bind(from);
+    }
+    if let Some(to) = filters.to {
+        qb.push(" AND recorded_at <= ").push_bind(to);
+    }
+    if let Some(after_id) = filters.after_id {
+        qb.push(" AND id > ").push_bind(after_id);
+    }
+
+    qb.push(" ORDER BY id");
+
+    let limit = filters.limit.unwrap_or(100).clamp(1, 1000);
+    qb.push(" LIMIT ").push_bind(limit);
+
+    qb.build_query_as::<WeatherReading>().fetch_all(db).await
 }
 
 async fn list_readings(
     State(state): State<AppState>,
+    Query(filters): Query<ReadingFilters>
 ) -> Result<Json<Vec<WeatherReading>>, String> {
-    let readings = fetch_all_readings(&state.db)
+    let readings = fetch_readings(&state.db, &filters)
         .await
         .map_err(|e| e.to_string())?;
 
@@ -59,8 +84,9 @@ async fn create_reading(
 
 async fn export_readings(
     State(state): State<AppState>,
+     Query(filters): Query<ReadingFilters>
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let readings = fetch_all_readings(&state.db)
+    let readings = fetch_readings(&state.db, &filters)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
