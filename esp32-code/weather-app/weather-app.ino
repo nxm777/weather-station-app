@@ -1,11 +1,16 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
+#include <OneWire.h>
+#include <DallasTemperature.h>
 
 #include "secrets.h"
 
 const unsigned long SEND_INTERVAL_MS = 10000;
 
+const int ONE_WIRE_BUS = 4;
+OneWire oneWire(ONE_WIRE_BUS);
+DallasTemperature sensors(&oneWire);
 
 void connectWiFi() {
   WiFi.mode(WIFI_STA);
@@ -20,6 +25,19 @@ void connectWiFi() {
   Serial.println(WiFi.localIP());
 }
 
+float readTemperature() {
+  sensors.requestTemperatures();
+  float tempC = sensors.getTempCByIndex(0);
+
+  if (tempC == DEVICE_DISCONNECTED_C) {
+    Serial.println("Error: DS18B20 sensor not responding");
+    return NAN;
+  }
+
+  Serial.printf("Temperature: %.2f °C\n", tempC);
+  return tempC;
+}
+
 void sendWeather() {
   if (WiFi.status() != WL_CONNECTED) {
     Serial.println("No WiFi - attempting to reconnect");
@@ -27,8 +45,16 @@ void sendWeather() {
     return;
   }
 
+  float temperature = readTemperature();
+  if (isnan(temperature)) {
+    Serial.println("Skipping transmission - invalid reading");
+    return;
+  }
+  temperature = roundf(temperature * 100.0f) / 100.0f;
+
+
   StaticJsonDocument<128> doc;
-  doc["temperature"] = 21.50;
+  doc["temperature"] = temperature;
   doc["humidity"]    = 51;
 
   String payload;
@@ -48,8 +74,8 @@ void sendWeather() {
     Serial.printf("Response status code: %d\n", code);
     String response = http.getString();
     if (response.length()) {
-    Serial.println(response);
-  }
+      Serial.println(response);
+    }
   } else {
     Serial.printf("Error: %s\n", http.errorToString(code).c_str());
   }
@@ -61,6 +87,10 @@ void setup() {
   Serial.begin(115200);
   delay(500);
 
+  sensors.begin();
+  Serial.print("DS18B20 sensors detected: ");
+  Serial.println(sensors.getDeviceCount());
+  
   connectWiFi();
 }
 
