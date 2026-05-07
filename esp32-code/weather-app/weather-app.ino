@@ -3,6 +3,7 @@
 #include <ArduinoJson.h>
 #include <OneWire.h>
 #include <DallasTemperature.h>
+#include <DHT.h>
 
 #include "secrets.h"
 
@@ -11,6 +12,9 @@ const unsigned long SEND_INTERVAL_MS = 10000;
 const int ONE_WIRE_BUS = 4;
 OneWire oneWire(ONE_WIRE_BUS);
 DallasTemperature sensors(&oneWire);
+
+const int DHT_PIN = 5;
+DHT dht(DHT_PIN, DHT11);
 
 void connectWiFi() {
   WiFi.mode(WIFI_STA);
@@ -38,6 +42,18 @@ float readTemperature() {
   return tempC;
 }
 
+float readHumidity() {
+  float humidity = dht.readHumidity();
+
+  if (isnan(humidity)) {
+    Serial.println("Error: DHT11 sensor not responding");
+    return NAN;
+  }
+
+  Serial.printf("Humidity: %.0f %%\n", humidity);
+  return humidity;
+}
+
 void sendWeather() {
   if (WiFi.status() != WL_CONNECTED) {
     Serial.println("No WiFi - attempting to reconnect");
@@ -47,15 +63,21 @@ void sendWeather() {
 
   float temperature = readTemperature();
   if (isnan(temperature)) {
-    Serial.println("Skipping transmission - invalid reading");
+    Serial.println("Skipping transmission - invalid temperature reading");
     return;
   }
   temperature = roundf(temperature * 100.0f) / 100.0f;
 
+  float humidity = readHumidity();
+  if (isnan(humidity)) {
+    Serial.println("Skipping transmission - invalid humidity reading");
+    return;
+  }
+
 
   StaticJsonDocument<128> doc;
   doc["temperature"] = temperature;
-  doc["humidity"]    = 51;
+  doc["humidity"]    = humidity;
 
   String payload;
   serializeJson(doc, payload);
@@ -88,6 +110,7 @@ void setup() {
   delay(500);
 
   sensors.begin();
+  dht.begin();
   Serial.print("DS18B20 sensors detected: ");
   Serial.println(sensors.getDeviceCount());
   
