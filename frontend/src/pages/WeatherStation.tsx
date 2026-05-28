@@ -45,7 +45,7 @@ export default function WeatherStation() {
   // załadowanie danych i odswiezanie co minute
   useEffect(() => {
     loadData();
-    const interval = setInterval(loadData, 60_000);
+    const interval = setInterval(loadData, 10_000);
     return () => clearInterval(interval);
   }, [range]);
 
@@ -62,7 +62,7 @@ export default function WeatherStation() {
   // tablice do liczenia statystyk
   const temps = readings.map((r) => r.temperature);
   const hums = readings.map((r) => r.humidity);
-  const pressures = readings.map((r) => r.pressure);
+  const pressures = readings.map((r) => r.pressure ?? 0).filter(v => v > 0);
 
   const tempMin = temps.length ? Math.floor(Math.min(...temps)) - 2 : 0;
   const tempMax = temps.length ? Math.ceil(Math.max(...temps)) + 2 : 40;
